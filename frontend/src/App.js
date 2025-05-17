@@ -1198,7 +1198,684 @@ const QuoteList = () => {
     </div>
   );
 };
-const QuoteForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Orçamento</h1><p>Em construção...</p></div>;
+const QuoteForm = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [parts, setParts] = useState([]);
+  const [selectedParts, setSelectedParts] = useState([]);
+  
+  // Get the vehicle ID from the query string if it exists
+  const searchParams = new URLSearchParams(location.search);
+  const vehicleIdFromQuery = searchParams.get('vehicle');
+  
+  const [quote, setQuote] = useState({
+    type: 'quote',
+    client_id: '',
+    vehicle_id: vehicleIdFromQuery || '',
+    items: [],
+    labor_cost: 0,
+    parts_cost: 0,
+    discount: 0,
+    tax: 0,
+    notes: '',
+    status: 'draft'
+  });
+  
+  const isEditing = !!id;
+
+  // Fetch initial data (clients, parts)
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Fetch clients
+        const clientsResponse = await axios.get(`${API}/clients`);
+        setClients(clientsResponse.data);
+        
+        // Fetch parts for inventory selection
+        const partsResponse = await axios.get(`${API}/parts`);
+        setParts(partsResponse.data);
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error fetching initial data:", error);
+        setError("Erro ao carregar dados iniciais. Por favor, tente novamente.");
+        setIsLoading(false);
+      }
+    };
+    
+    fetchInitialData();
+  }, []);
+  
+  // Fetch vehicles when client is selected
+  useEffect(() => {
+    if (!quote.client_id) {
+      setVehicles([]);
+      if (!vehicleIdFromQuery) {
+        setQuote(prev => ({ ...prev, vehicle_id: '' }));
+      }
+      return;
+    }
+    
+    const fetchVehicles = async () => {
+      try {
+        const response = await axios.get(`${API}/vehicles?client_id=${quote.client_id}`);
+        setVehicles(response.data);
+        
+        // If no vehicle is selected and we have vehicles, select the first one
+        if (!quote.vehicle_id && response.data.length > 0 && !vehicleIdFromQuery) {
+          setQuote(prev => ({ ...prev, vehicle_id: response.data[0].id }));
+        }
+      } catch (error) {
+        console.error("Error fetching vehicles:", error);
+      }
+    };
+    
+    fetchVehicles();
+  }, [quote.client_id, vehicleIdFromQuery]);
+  
+  // Fetch quote data if editing
+  useEffect(() => {
+    if (isEditing) {
+      const fetchQuote = async () => {
+        try {
+          setIsLoading(true);
+          const response = await axios.get(`${API}/services/${id}`);
+          
+          // Convert items to the format expected by our form
+          const formattedItems = response.data.items.map(item => ({
+            ...item,
+            isService: item.type === 'service',
+            part_id: item.type === 'part' ? item.part_id : null
+          }));
+          
+          setQuote({
+            ...response.data,
+            items: formattedItems
+          });
+          
+          setIsLoading(false);
+        } catch (error) {
+          console.error("Error fetching quote:", error);
+          setError("Erro ao carregar dados do orçamento.");
+          setIsLoading(false);
+        }
+      };
+      
+      fetchQuote();
+    }
+  }, [id, isEditing]);
+  
+  // Calculate the total
+  const calculateTotal = () => {
+    const laborCost = parseFloat(quote.labor_cost) || 0;
+    const partsCost = parseFloat(quote.parts_cost) || 0;
+    const discount = parseFloat(quote.discount) || 0;
+    const tax = parseFloat(quote.tax) || 0;
+    
+    return laborCost + partsCost - discount + tax;
+  };
+  
+  // Handle input changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Handle numeric fields
+    if (['labor_cost', 'parts_cost', 'discount', 'tax'].includes(name)) {
+      const numericValue = value === '' ? 0 : parseFloat(value);
+      
+      setQuote(prev => {
+        const updatedQuote = {
+          ...prev,
+          [name]: numericValue
+        };
+        
+        // Update total
+        if (name === 'labor_cost' || name === 'parts_cost') {
+          // Calculate new parts_cost based on items
+          const parts_cost = quote.items
+            .filter(item => item.type === 'part')
+            .reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+          
+          if (name === 'labor_cost') {
+            updatedQuote.parts_cost = parts_cost;
+          }
+        }
+        
+        return updatedQuote;
+      });
+    } else {
+      setQuote(prev => ({ ...prev, [name]: value }));
+    }
+  };
+  
+  // Add a service item to the quote
+  const addServiceItem = () => {
+    const newItem = {
+      id: Date.now().toString(), // Temporary id
+      description: '',
+      quantity: 1,
+      unit_price: 0,
+      total: 0,
+      type: 'service'
+    };
+    
+    setQuote(prev => ({
+      ...prev,
+      items: [...prev.items, newItem]
+    }));
+  };
+  
+  // Add a part item to the quote
+  const addPartItem = (partId) => {
+    const part = parts.find(p => p.id === partId);
+    
+    if (!part) return;
+    
+    const newItem = {
+      id: Date.now().toString(), // Temporary id
+      description: part.name,
+      quantity: 1,
+      unit_price: part.sale_price,
+      total: part.sale_price,
+      type: 'part',
+      part_id: part.id
+    };
+    
+    setQuote(prev => {
+      const updatedItems = [...prev.items, newItem];
+      
+      // Calculate new parts_cost
+      const parts_cost = updatedItems
+        .filter(item => item.type === 'part')
+        .reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+      
+      return {
+        ...prev,
+        items: updatedItems,
+        parts_cost: parts_cost
+      };
+    });
+    
+    // Remove from selected parts
+    setSelectedParts(prev => prev.filter(id => id !== partId));
+  };
+  
+  // Update an item in the quote
+  const updateItem = (itemId, field, value) => {
+    setQuote(prev => {
+      const updatedItems = prev.items.map(item => {
+        if (item.id === itemId) {
+          const updatedItem = { ...item, [field]: value };
+          
+          // Recalculate total if quantity or unit_price changed
+          if (field === 'quantity' || field === 'unit_price') {
+            updatedItem.quantity = parseFloat(updatedItem.quantity) || 0;
+            updatedItem.unit_price = parseFloat(updatedItem.unit_price) || 0;
+            updatedItem.total = updatedItem.quantity * updatedItem.unit_price;
+          }
+          
+          return updatedItem;
+        }
+        return item;
+      });
+      
+      // Calculate new parts_cost if needed
+      const parts_cost = updatedItems
+        .filter(item => item.type === 'part')
+        .reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+      
+      return {
+        ...prev,
+        items: updatedItems,
+        parts_cost: parts_cost
+      };
+    });
+  };
+  
+  // Remove an item from the quote
+  const removeItem = (itemId) => {
+    setQuote(prev => {
+      const updatedItems = prev.items.filter(item => item.id !== itemId);
+      
+      // Calculate new parts_cost
+      const parts_cost = updatedItems
+        .filter(item => item.type === 'part')
+        .reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+      
+      return {
+        ...prev,
+        items: updatedItems,
+        parts_cost: parts_cost
+      };
+    });
+  };
+  
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!quote.client_id || !quote.vehicle_id) {
+      setError("Cliente e veículo são obrigatórios.");
+      return;
+    }
+    
+    // Prepare data for submission
+    const quoteData = {
+      ...quote,
+      total: calculateTotal()
+    };
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      if (isEditing) {
+        await axios.put(`${API}/services/${id}`, quoteData);
+      } else {
+        await axios.post(`${API}/services`, quoteData);
+      }
+      
+      navigate('/quotes');
+    } catch (error) {
+      console.error("Error saving quote:", error);
+      setError("Erro ao salvar orçamento. Por favor, tente novamente.");
+      setIsLoading(false);
+    }
+  };
+  
+  // Format currency for display
+  const formatCurrency = (value) => {
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return "R$ 0,00";
+    return `R$ ${numValue.toFixed(2).replace('.', ',')}`;
+  };
+  
+  if (isLoading && isEditing) {
+    return (
+      <div className="p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">
+          {isEditing ? 'Editar Orçamento' : 'Novo Orçamento'}
+        </h1>
+        <button
+          onClick={() => navigate('/quotes')}
+          className="inline-flex items-center py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Voltar
+        </button>
+      </div>
+      
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit}>
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Informações Básicas</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Client Selection */}
+            <div>
+              <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Cliente <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="client_id"
+                name="client_id"
+                value={quote.client_id}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                required
+              >
+                <option value="">Selecione um cliente</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.name} - {client.document}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Vehicle Selection */}
+            <div>
+              <label htmlFor="vehicle_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Veículo <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="vehicle_id"
+                name="vehicle_id"
+                value={quote.vehicle_id}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                required
+                disabled={!quote.client_id || vehicles.length === 0}
+              >
+                <option value="">Selecione um veículo</option>
+                {vehicles.map(vehicle => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.make} {vehicle.model} - {vehicle.license_plate}
+                  </option>
+                ))}
+              </select>
+              {quote.client_id && vehicles.length === 0 && (
+                <p className="mt-1 text-sm text-red-600">
+                  Este cliente não possui veículos cadastrados.{' '}
+                  <Link to={`/vehicles/new?client=${quote.client_id}`} className="text-blue-600 hover:text-blue-800">
+                    Cadastrar veículo
+                  </Link>
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Itens do Orçamento</h2>
+            <button
+              type="button"
+              onClick={addServiceItem}
+              className="inline-flex items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              Adicionar Serviço
+            </button>
+          </div>
+          
+          {/* Service/Parts Items Table */}
+          <div className="overflow-x-auto mb-4">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2">Tipo</th>
+                  <th className="px-4 py-2">Descrição</th>
+                  <th className="px-4 py-2">Qtd</th>
+                  <th className="px-4 py-2">Preço Unit.</th>
+                  <th className="px-4 py-2">Total</th>
+                  <th className="px-4 py-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quote.items.length > 0 ? (
+                  quote.items.map((item, index) => (
+                    <tr key={item.id} className="border-b">
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.type === 'service' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          {item.type === 'service' ? 'Serviço' : 'Peça'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded p-1.5"
+                          placeholder="Descrição do item"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                          className="w-16 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded p-1.5"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(item.id, 'unit_price', e.target.value)}
+                          className="w-24 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded p-1.5"
+                        />
+                      </td>
+                      <td className="px-4 py-2 font-medium">
+                        {formatCurrency(item.quantity * item.unit_price)}
+                      </td>
+                      <td className="px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-4 text-center text-gray-500">
+                      Nenhum item adicionado. Clique em "Adicionar Serviço" ou selecione uma peça abaixo.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot className="border-t">
+                <tr>
+                  <td colSpan="4" className="px-4 py-2 text-right font-medium">Total de Itens:</td>
+                  <td className="px-4 py-2 font-bold">
+                    {formatCurrency(quote.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0))}
+                  </td>
+                  <td className="px-4 py-2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          
+          {/* Parts Selection */}
+          <div className="mb-4">
+            <h3 className="text-lg font-medium text-gray-800 mb-2">Adicionar Peças do Estoque</h3>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {parts
+                .filter(part => part.quantity > 0 && !quote.items.some(item => item.part_id === part.id))
+                .slice(0, 10) // Limit to first 10 parts to avoid UI clutter
+                .map(part => (
+                  <button
+                    key={part.id}
+                    type="button"
+                    onClick={() => addPartItem(part.id)}
+                    className="inline-flex items-center py-1 px-3 bg-green-50 border border-green-200 text-green-700 rounded hover:bg-green-100 transition-colors text-sm"
+                  >
+                    <span className="mr-1">+</span> {part.name} ({formatCurrency(part.sale_price)})
+                  </button>
+                ))}
+              {parts.filter(part => part.quantity > 0 && !quote.items.some(item => item.part_id === part.id)).length > 10 && (
+                <span className="text-sm text-gray-500 self-center">
+                  + {parts.filter(part => part.quantity > 0 && !quote.items.some(item => item.part_id === part.id)).length - 10} mais...
+                </span>
+              )}
+              {parts.filter(part => part.quantity > 0 && !quote.items.some(item => item.part_id === part.id)).length === 0 && (
+                <span className="text-sm text-gray-500">
+                  Não há peças disponíveis em estoque para adicionar.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Valores e Totais</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Labor Cost */}
+            <div>
+              <label htmlFor="labor_cost" className="block text-sm font-medium text-gray-700 mb-1">
+                Mão de Obra (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="labor_cost"
+                name="labor_cost"
+                value={quote.labor_cost}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              />
+            </div>
+            
+            {/* Parts Cost (read only, calculated from items) */}
+            <div>
+              <label htmlFor="parts_cost" className="block text-sm font-medium text-gray-700 mb-1">
+                Valor de Peças (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="parts_cost"
+                name="parts_cost"
+                value={quote.parts_cost}
+                readOnly
+                className="bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Calculado automaticamente a partir dos itens de peças adicionados acima.
+              </p>
+            </div>
+            
+            {/* Discount */}
+            <div>
+              <label htmlFor="discount" className="block text-sm font-medium text-gray-700 mb-1">
+                Desconto (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="discount"
+                name="discount"
+                value={quote.discount}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              />
+            </div>
+            
+            {/* Tax */}
+            <div>
+              <label htmlFor="tax" className="block text-sm font-medium text-gray-700 mb-1">
+                Impostos/Taxas (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="tax"
+                name="tax"
+                value={quote.tax}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              />
+            </div>
+            
+            {/* Status */}
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={quote.status}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              >
+                <option value="draft">Rascunho</option>
+                <option value="waiting_approval">Aguardando Aprovação</option>
+                <option value="approved">Aprovado</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+            </div>
+            
+            {/* Grand Total (calculated) */}
+            <div className="bg-gray-100 p-4 rounded-lg flex items-center justify-between">
+              <span className="text-lg font-bold text-gray-800">Total Final:</span>
+              <span className="text-2xl font-bold text-blue-600">{formatCurrency(calculateTotal())}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Observações</h2>
+          
+          <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+              Observações e Condições
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              value={quote.notes || ''}
+              onChange={handleChange}
+              rows="3"
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              placeholder="Adicione informações adicionais, condições ou observações sobre o orçamento..."
+            ></textarea>
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/quotes')}
+            className="py-2 px-4 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="py-2 px-6 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center"
+          >
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Salvando...
+              </>
+            ) : (
+              'Salvar Orçamento'
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
 const QuoteDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Orçamento</h1><p>Em construção...</p></div>;
 const OrderList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Ordens de Serviço</h1><p>Em construção...</p></div>;
 const OrderForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Nova Ordem de Serviço</h1><p>Em construção...</p></div>;
