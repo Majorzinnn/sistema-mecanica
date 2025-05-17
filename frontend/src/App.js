@@ -495,7 +495,155 @@ const ClientList = () => {
 // Placeholders for the rest of the views
 const ClientForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Cliente</h1><p>Em construção...</p></div>;
 const ClientDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Cliente</h1><p>Em construção...</p></div>;
-const VehicleList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Veículos</h1><p>Em construção...</p></div>;
+// Vehicle management components
+const VehicleList = () => {
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
+  const [clients, setClients] = useState([]);
+
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch clients for the filter dropdown
+        const clientsResponse = await axios.get(`${API}/clients`);
+        setClients(clientsResponse.data);
+        
+        // Build query string for filters
+        const queryParams = new URLSearchParams();
+        if (search) queryParams.append('search', search);
+        if (clientFilter) queryParams.append('client_id', clientFilter);
+        
+        // Fetch vehicles with filters
+        const vehiclesResponse = await axios.get(`${API}/vehicles?${queryParams.toString()}`);
+        setVehicles(vehiclesResponse.data);
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching vehicles:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchVehicles();
+  }, [search, clientFilter]);
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Veículos</h1>
+        <Link 
+          to="/vehicles/new" 
+          className="inline-flex items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+          </svg>
+          Novo Veículo
+        </Link>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md mb-6">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"></path>
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5" 
+              placeholder="Buscar por placa, marca, modelo..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <select
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+            >
+              <option value="">Todos os Clientes</option>
+              {clients.map(client => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          {vehicles.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3">Placa</th>
+                    <th className="px-6 py-3">Marca/Modelo</th>
+                    <th className="px-6 py-3">Ano</th>
+                    <th className="px-6 py-3">Proprietário</th>
+                    <th className="px-6 py-3">Quilometragem</th>
+                    <th className="px-6 py-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vehicles.map((vehicle) => {
+                    // Find the client for this vehicle
+                    const client = clients.find(c => c.id === vehicle.client_id) || { name: 'Cliente não encontrado' };
+                    
+                    return (
+                      <tr key={vehicle.id} className="border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">{vehicle.license_plate}</td>
+                        <td className="px-6 py-4">{vehicle.make} {vehicle.model}</td>
+                        <td className="px-6 py-4">{vehicle.year}</td>
+                        <td className="px-6 py-4">{client.name}</td>
+                        <td className="px-6 py-4">{vehicle.mileage ? `${vehicle.mileage} km` : '-'}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex space-x-2">
+                            <Link to={`/vehicles/${vehicle.id}`} className="text-blue-600 hover:text-blue-900">
+                              Ver
+                            </Link>
+                            <Link to={`/vehicles/${vehicle.id}/edit`} className="text-green-600 hover:text-green-900">
+                              Editar
+                            </Link>
+                            <Link to={`/vehicles/${vehicle.id}/history`} className="text-purple-600 hover:text-purple-900">
+                              Histórico
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center p-10">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <p className="text-gray-500">Nenhum veículo encontrado{(search || clientFilter) && " para os filtros selecionados"}.</p>
+              <Link to="/vehicles/new" className="inline-block mt-3 text-blue-600 hover:text-blue-800">
+                Adicionar novo veículo
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 const VehicleForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Veículo</h1><p>Em construção...</p></div>;
 const VehicleDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Veículo</h1><p>Em construção...</p></div>;
 const QuoteList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Orçamentos</h1><p>Em construção...</p></div>;
