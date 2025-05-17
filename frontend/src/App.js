@@ -646,7 +646,337 @@ const VehicleList = () => {
   );
 };
 const VehicleForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Veículo</h1><p>Em construção...</p></div>;
-const VehicleDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Veículo</h1><p>Em construção...</p></div>;
+const VehicleDetail = () => {
+  const { id } = useParams();
+  const [vehicle, setVehicle] = useState(null);
+  const [client, setClient] = useState(null);
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchVehicleDetails = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch vehicle data
+        const vehicleResponse = await axios.get(`${API}/vehicles/${id}`);
+        setVehicle(vehicleResponse.data);
+        
+        // Fetch client data
+        const clientResponse = await axios.get(`${API}/clients/${vehicleResponse.data.client_id}`);
+        setClient(clientResponse.data);
+        
+        // Fetch services for this vehicle
+        const servicesResponse = await axios.get(`${API}/services?vehicle_id=${id}`);
+        setServices(servicesResponse.data);
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching vehicle details:", error);
+        setError("Erro ao carregar os detalhes do veículo.");
+        setLoading(false);
+      }
+    };
+    
+    fetchVehicleDetails();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Erro! </strong>
+          <span className="block sm:inline">{error}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!vehicle) {
+    return (
+      <div className="p-6">
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Atenção! </strong>
+          <span className="block sm:inline">Veículo não encontrado.</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">{vehicle.make} {vehicle.model}</h1>
+          <p className="text-gray-600">Placa: {vehicle.license_plate}</p>
+        </div>
+        <div className="flex space-x-3">
+          <Link 
+            to={`/vehicles/${id}/edit`} 
+            className="inline-flex items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+            </svg>
+            Editar
+          </Link>
+          <Link 
+            to={`/quotes/new?vehicle=${id}`} 
+            className="inline-flex items-center py-2 px-4 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" />
+            </svg>
+            Novo Orçamento
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* Vehicle Details Card */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Informações do Veículo</h2>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Marca:</div>
+              <div className="font-medium">{vehicle.make}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Modelo:</div>
+              <div className="font-medium">{vehicle.model}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Ano:</div>
+              <div className="font-medium">{vehicle.year}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Placa:</div>
+              <div className="font-medium">{vehicle.license_plate}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Cor:</div>
+              <div className="font-medium">{vehicle.color || '-'}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Quilometragem:</div>
+              <div className="font-medium">{vehicle.mileage ? `${vehicle.mileage} km` : '-'}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Chassi (VIN):</div>
+              <div className="font-medium">{vehicle.vin || '-'}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Combustível:</div>
+              <div className="font-medium">{vehicle.fuel_type || '-'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Owner Details Card */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Proprietário</h2>
+          {client ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2">
+                <div className="text-gray-600">Nome:</div>
+                <div className="font-medium">{client.name}</div>
+              </div>
+              <div className="grid grid-cols-2">
+                <div className="text-gray-600">CPF/CNPJ:</div>
+                <div className="font-medium">{client.document}</div>
+              </div>
+              <div className="grid grid-cols-2">
+                <div className="text-gray-600">Telefone:</div>
+                <div className="font-medium">{client.phone}</div>
+              </div>
+              <div className="grid grid-cols-2">
+                <div className="text-gray-600">Email:</div>
+                <div className="font-medium">{client.email || '-'}</div>
+              </div>
+              <div className="mt-4">
+                <Link to={`/clients/${client.id}`} className="text-blue-600 hover:text-blue-800">
+                  Ver perfil completo
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-600">Informações do proprietário não disponíveis.</p>
+          )}
+        </div>
+
+        {/* Service Stats Card */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Resumo de Serviços</h2>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Total de Serviços:</div>
+              <div className="font-medium">{services.length}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Orçamentos:</div>
+              <div className="font-medium">{services.filter(s => s.type === 'quote').length}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Ordens de Serviço:</div>
+              <div className="font-medium">{services.filter(s => s.type === 'order').length}</div>
+            </div>
+            <div className="grid grid-cols-2">
+              <div className="text-gray-600">Última Visita:</div>
+              <div className="font-medium">
+                {services.length > 0 
+                  ? new Date(Math.max(...services.map(s => new Date(s.created_at)))).toLocaleDateString('pt-BR')
+                  : 'Nenhuma visita'
+                }
+              </div>
+            </div>
+            {vehicle.notes && (
+              <div className="mt-4">
+                <h3 className="text-gray-600 font-medium">Observações:</h3>
+                <p className="text-gray-800 mt-1">{vehicle.notes}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Vehicle History Timeline */}
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-6">Histórico do Veículo</h2>
+        
+        {services.length > 0 ? (
+          <div className="relative border-l-2 border-blue-200 ml-3">
+            {services.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((service, index) => (
+              <div key={service.id} className="mb-10 ml-6">
+                <div className="absolute w-4 h-4 bg-blue-600 rounded-full -left-2.5 border border-white"></div>
+                <div className="flex items-center mb-1">
+                  <time className="text-sm font-normal leading-none text-gray-500">
+                    {new Date(service.created_at).toLocaleDateString('pt-BR')}
+                  </time>
+                  <span className={`ml-3 text-xs font-medium mr-2 px-2.5 py-0.5 rounded 
+                    ${service.type === 'quote' 
+                      ? 'bg-purple-100 text-purple-800' 
+                      : 'bg-green-100 text-green-800'}`}>
+                    {service.type === 'quote' ? 'Orçamento' : 'Ordem de Serviço'}
+                  </span>
+                  <span className={`ml-2 text-xs font-medium mr-2 px-2.5 py-0.5 rounded 
+                    ${service.status === 'draft' ? 'bg-gray-100 text-gray-800' :
+                      service.status === 'waiting_approval' ? 'bg-yellow-100 text-yellow-800' :
+                      service.status === 'approved' ? 'bg-blue-100 text-blue-800' :
+                      service.status === 'in_progress' ? 'bg-indigo-100 text-indigo-800' :
+                      service.status === 'waiting_parts' ? 'bg-pink-100 text-pink-800' :
+                      service.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                      service.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                      'bg-red-100 text-red-800'}`}>
+                    {service.status === 'draft' ? 'Rascunho' :
+                      service.status === 'waiting_approval' ? 'Aguardando Aprovação' :
+                      service.status === 'approved' ? 'Aprovado' :
+                      service.status === 'in_progress' ? 'Em Andamento' :
+                      service.status === 'waiting_parts' ? 'Aguardando Peças' :
+                      service.status === 'completed' ? 'Concluído' :
+                      service.status === 'delivered' ? 'Entregue' :
+                      'Cancelado'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {service.number}
+                </h3>
+                <p className="mt-2 text-base font-normal text-gray-600">
+                  {service.items.length > 0 && 
+                    service.items.slice(0, 2).map(item => 
+                      <span key={item.id} className="block">{item.description}</span>
+                    )
+                  }
+                  {service.items.length > 2 && 
+                    <span className="block text-sm text-gray-500">... e {service.items.length - 2} outros itens</span>
+                  }
+                </p>
+                <div className="mt-2 flex justify-between items-center">
+                  <div className="text-gray-900 font-semibold">
+                    Total: R${service.total.toFixed(2).replace('.', ',')}
+                  </div>
+                  <Link to={service.type === 'quote' ? `/quotes/${service.id}` : `/orders/${service.id}`} className="text-blue-600 hover:text-blue-900 font-medium">
+                    Ver detalhes
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center p-6">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-gray-500">Este veículo ainda não possui histórico de serviços.</p>
+            <Link to={`/quotes/new?vehicle=${id}`} className="inline-block mt-3 text-blue-600 hover:text-blue-800">
+              Criar novo orçamento
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {/* Interactive Service Map with Dots for when services happened */}
+      {services.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-6">Linha do Tempo de Serviços</h2>
+          <div className="h-20 relative flex items-center">
+            {/* Timeline bar */}
+            <div className="w-full bg-gray-200 h-1 absolute"></div>
+            
+            {/* Get earliest and latest dates */}
+            {(() => {
+              const dates = services.map(s => new Date(s.created_at));
+              const firstDate = new Date(Math.min(...dates));
+              const lastDate = new Date(Math.max(...dates));
+              const timespan = lastDate - firstDate;
+              
+              return services.map((service, index) => {
+                const serviceDate = new Date(service.created_at);
+                // Calculate position as percentage along the timeline
+                const position = timespan === 0 ? 50 : ((serviceDate - firstDate) / timespan) * 100;
+                
+                return (
+                  <div 
+                    key={service.id} 
+                    className="absolute transform -translate-x-1/2"
+                    style={{ left: `${position}%` }}
+                  >
+                    <div 
+                      className={`w-4 h-4 rounded-full cursor-pointer border-2 border-white
+                        ${service.type === 'quote' ? 'bg-purple-500' : 'bg-green-500'}`}
+                      title={`${service.number} - ${new Date(service.created_at).toLocaleDateString('pt-BR')}`}
+                    ></div>
+                    <div className="text-xs text-center mt-1 whitespace-nowrap">
+                      {new Date(service.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+            
+            {/* Date labels */}
+            <div className="absolute -bottom-8 left-0 text-xs text-gray-500">
+              {services.length > 0 && new Date(Math.min(...services.map(s => new Date(s.created_at)))).toLocaleDateString('pt-BR')}
+            </div>
+            <div className="absolute -bottom-8 right-0 text-xs text-gray-500">
+              {services.length > 0 && new Date(Math.max(...services.map(s => new Date(s.created_at)))).toLocaleDateString('pt-BR')}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 const QuoteList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Orçamentos</h1><p>Em construção...</p></div>;
 const QuoteForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Orçamento</h1><p>Em construção...</p></div>;
 const QuoteDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Orçamento</h1><p>Em construção...</p></div>;
