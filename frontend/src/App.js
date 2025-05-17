@@ -22,8 +22,8 @@ const Sidebar = () => {
   return (
     <div className="sidebar bg-gray-900 text-white h-screen w-64 fixed left-0 top-0 overflow-y-auto shadow-lg">
       <div className="p-5 border-b border-gray-800">
-        <h1 className="text-2xl font-bold">Auto Master</h1>
-        <p className="text-sm text-gray-400">Gestão de Oficina</p>
+        <h1 className="text-2xl font-bold">EUROPA</h1>
+        <p className="text-sm text-gray-400">Gestão de Oficina Mecânica</p>
       </div>
       
       <nav className="mt-5">
