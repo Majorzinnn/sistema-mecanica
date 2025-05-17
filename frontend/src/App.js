@@ -984,7 +984,166 @@ const QuoteDetail = () => <div className="p-6"><h1 className="text-3xl font-bold
 const OrderList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Ordens de Serviço</h1><p>Em construção...</p></div>;
 const OrderForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Nova Ordem de Serviço</h1><p>Em construção...</p></div>;
 const OrderDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes da Ordem de Serviço</h1><p>Em construção...</p></div>;
-const InventoryList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Estoque</h1><p>Em construção...</p></div>;
+const InventoryList = () => {
+  const [parts, setParts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+
+  useEffect(() => {
+    const fetchParts = async () => {
+      try {
+        setLoading(true);
+        const queryParams = new URLSearchParams();
+        if (search) queryParams.append('search', search);
+        if (lowStockOnly) queryParams.append('low_stock', 'true');
+        
+        const response = await axios.get(`${API}/parts?${queryParams.toString()}`);
+        setParts(response.data);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching parts:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchParts();
+  }, [search, lowStockOnly]);
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Estoque</h1>
+        <Link 
+          to="/inventory/new" 
+          className="inline-flex items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+          </svg>
+          Novo Item
+        </Link>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md mb-6">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative col-span-2">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"></path>
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5" 
+              placeholder="Buscar por código, nome, descrição..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          
+          <div className="flex items-center">
+            <input
+              id="low-stock-checkbox"
+              type="checkbox"
+              checked={lowStockOnly}
+              onChange={(e) => setLowStockOnly(e.target.checked)}
+              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <label htmlFor="low-stock-checkbox" className="ml-2 text-sm font-medium text-gray-900">
+              Mostrar apenas itens com estoque baixo
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          {parts.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3">Código</th>
+                    <th className="px-6 py-3">Descrição</th>
+                    <th className="px-6 py-3">Preço Venda (R$)</th>
+                    <th className="px-6 py-3">Estoque</th>
+                    <th className="px-6 py-3">Mínimo</th>
+                    <th className="px-6 py-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((part) => (
+                    <tr key={part.id} className={`border-b hover:bg-gray-50 ${part.quantity <= part.min_quantity ? 'bg-yellow-50' : ''}`}>
+                      <td className="px-6 py-4 font-medium text-gray-900">{part.code}</td>
+                      <td className="px-6 py-4">{part.name}</td>
+                      <td className="px-6 py-4">{part.sale_price.toFixed(2).replace('.', ',')}</td>
+                      <td className={`px-6 py-4 ${part.quantity <= part.min_quantity ? 'font-bold text-red-600' : ''}`}>
+                        {part.quantity} {part.unit}
+                      </td>
+                      <td className="px-6 py-4">{part.min_quantity} {part.unit}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex space-x-2">
+                          <Link to={`/inventory/${part.id}`} className="text-blue-600 hover:text-blue-900">
+                            Ver
+                          </Link>
+                          <Link to={`/inventory/${part.id}/edit`} className="text-green-600 hover:text-green-900">
+                            Editar
+                          </Link>
+                          <button 
+                            className="text-purple-600 hover:text-purple-900"
+                            onClick={() => {
+                              const quantity = prompt(`Adicionar quantidade ao estoque para: ${part.name}`, "1");
+                              if (quantity !== null) {
+                                const parsedQuantity = parseInt(quantity);
+                                if (!isNaN(parsedQuantity) && parsedQuantity > 0) {
+                                  const newQuantity = part.quantity + parsedQuantity;
+                                  axios.put(`${API}/parts/${part.id}`, { quantity: newQuantity })
+                                    .then(() => {
+                                      setParts(parts.map(p => 
+                                        p.id === part.id ? {...p, quantity: newQuantity} : p
+                                      ));
+                                      alert(`Estoque atualizado. Novo estoque: ${newQuantity} ${part.unit}`);
+                                    })
+                                    .catch(err => {
+                                      console.error("Error updating stock:", err);
+                                      alert("Erro ao atualizar estoque!");
+                                    });
+                                } else {
+                                  alert("Por favor, insira um número válido maior que zero.");
+                                }
+                              }
+                            }}
+                          >
+                            + Estoque
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center p-10">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              <p className="text-gray-500">Nenhum item encontrado{search ? " para a busca realizada" : lowStockOnly ? " com estoque baixo" : ""}.</p>
+              <Link to="/inventory/new" className="inline-block mt-3 text-blue-600 hover:text-blue-800">
+                Adicionar novo item ao estoque
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 const InventoryForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Item de Estoque</h1><p>Em construção...</p></div>;
 const InventoryDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Item</h1><p>Em construção...</p></div>;
 const ScheduleView = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Agenda</h1><p>Em construção...</p></div>;
