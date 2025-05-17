@@ -1144,7 +1144,331 @@ const InventoryList = () => {
     </div>
   );
 };
-const InventoryForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Item de Estoque</h1><p>Em construção...</p></div>;
+const InventoryForm = () => {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [part, setPart] = useState({
+    code: '',
+    name: '',
+    description: '',
+    supplier: '',
+    cost_price: '',
+    sale_price: '',
+    quantity: '',
+    min_quantity: '',
+    unit: 'unit',
+    location: ''
+  });
+  const isEditing = !!id;
+
+  useEffect(() => {
+    if (isEditing) {
+      const fetchPart = async () => {
+        try {
+          setIsLoading(true);
+          const response = await axios.get(`${API}/parts/${id}`);
+          setPart(response.data);
+          setIsLoading(false);
+        } catch (error) {
+          console.error("Error fetching part:", error);
+          setError("Erro ao carregar dados da peça.");
+          setIsLoading(false);
+        }
+      };
+      fetchPart();
+    }
+  }, [id, isEditing]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setPart(prev => ({
+      ...prev,
+      [name]: name === 'cost_price' || name === 'sale_price' || name === 'quantity' || name === 'min_quantity' 
+        ? value === '' ? '' : Number(value)
+        : value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!part.code || !part.name || !part.cost_price || !part.sale_price || part.quantity === '') {
+      setError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      if (isEditing) {
+        // Update existing part
+        const { id: _, ...updateData } = part;
+        await axios.put(`${API}/parts/${id}`, updateData);
+      } else {
+        // Create new part
+        await axios.post(`${API}/parts`, part);
+      }
+      
+      navigate('/inventory');
+    } catch (error) {
+      console.error("Error saving part:", error);
+      setError(error.response?.data?.detail || "Erro ao salvar peça.");
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading && isEditing) {
+    return (
+      <div className="p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">
+          {isEditing ? 'Editar Item' : 'Novo Item de Estoque'}
+        </h1>
+        <button
+          onClick={() => navigate('/inventory')}
+          className="inline-flex items-center py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Voltar
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Código */}
+            <div>
+              <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
+                Código <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="code"
+                name="code"
+                value={part.code}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: OIL-5W30"
+                required
+              />
+            </div>
+
+            {/* Nome */}
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                Nome <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={part.name}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Óleo Motor 5W30 Sintético"
+                required
+              />
+            </div>
+
+            {/* Descrição */}
+            <div className="md:col-span-2">
+              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                Descrição
+              </label>
+              <textarea
+                id="description"
+                name="description"
+                value={part.description || ''}
+                onChange={handleChange}
+                rows="2"
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Descrição detalhada do item..."
+              ></textarea>
+            </div>
+
+            {/* Fornecedor */}
+            <div>
+              <label htmlFor="supplier" className="block text-sm font-medium text-gray-700 mb-1">
+                Fornecedor
+              </label>
+              <input
+                type="text"
+                id="supplier"
+                name="supplier"
+                value={part.supplier || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Shell"
+              />
+            </div>
+
+            {/* Localização */}
+            <div>
+              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                Localização no Estoque
+              </label>
+              <input
+                type="text"
+                id="location"
+                name="location"
+                value={part.location || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Prateleira A, Seção 3"
+              />
+            </div>
+
+            {/* Preço de Custo */}
+            <div>
+              <label htmlFor="cost_price" className="block text-sm font-medium text-gray-700 mb-1">
+                Preço de Custo (R$) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="cost_price"
+                name="cost_price"
+                value={part.cost_price}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="0,00"
+                required
+              />
+            </div>
+
+            {/* Preço de Venda */}
+            <div>
+              <label htmlFor="sale_price" className="block text-sm font-medium text-gray-700 mb-1">
+                Preço de Venda (R$) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="sale_price"
+                name="sale_price"
+                value={part.sale_price}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="0,00"
+                required
+              />
+            </div>
+
+            {/* Quantidade Atual */}
+            <div>
+              <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
+                Quantidade em Estoque <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                id="quantity"
+                name="quantity"
+                value={part.quantity}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="0"
+                required
+              />
+            </div>
+
+            {/* Quantidade Mínima */}
+            <div>
+              <label htmlFor="min_quantity" className="block text-sm font-medium text-gray-700 mb-1">
+                Quantidade Mínima
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                id="min_quantity"
+                name="min_quantity"
+                value={part.min_quantity || 0}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="0"
+              />
+            </div>
+
+            {/* Unidade */}
+            <div>
+              <label htmlFor="unit" className="block text-sm font-medium text-gray-700 mb-1">
+                Unidade de Medida
+              </label>
+              <select
+                id="unit"
+                name="unit"
+                value={part.unit}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              >
+                <option value="unit">Unidade (un)</option>
+                <option value="litro">Litro (L)</option>
+                <option value="metro">Metro (m)</option>
+                <option value="kg">Quilograma (kg)</option>
+                <option value="par">Par</option>
+                <option value="conjunto">Conjunto</option>
+                <option value="pacote">Pacote</option>
+                <option value="caixa">Caixa</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end">
+            <button
+              type="button"
+              onClick={() => navigate('/inventory')}
+              className="mr-2 py-2 px-4 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="py-2 px-6 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Salvando...
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 const InventoryDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Item</h1><p>Em construção...</p></div>;
 const ScheduleView = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Agenda</h1><p>Em construção...</p></div>;
 const ScheduleForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Agendamento</h1><p>Em construção...</p></div>;
