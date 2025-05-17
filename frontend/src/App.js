@@ -5,7 +5,8 @@ import {
   Route,
   Link,
   useLocation,
-  useNavigate
+  useNavigate,
+  useParams
 } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
