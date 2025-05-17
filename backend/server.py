@@ -763,7 +763,153 @@ async def startup():
     await db.appointments.create_index("start_time")
     logger.info("Application startup completed")
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-    logger.info("Shutting down the application...")
+# Backup and Restore endpoints
+class BackupResponse(BaseModel):
+    filename: str
+    message: str
+
+@api_router.post("/backup", response_model=BackupResponse)
+async def create_backup():
+    """Create a backup of all data in the system."""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"europa_backup_{timestamp}.zip"
+        temp_dir = tempfile.mkdtemp()
+        
+        # Create collections directory
+        collections_dir = os.path.join(temp_dir, "collections")
+        os.makedirs(collections_dir, exist_ok=True)
+        
+        # Backup each collection
+        collections = ['clients', 'vehicles', 'parts', 'quotes_orders', 'appointments']
+        for collection_name in collections:
+            collection = db[collection_name]
+            documents = await collection.find({}).to_list(length=None)
+            
+            # Convert ObjectId to string in documents
+            for doc in documents:
+                if '_id' in doc:
+                    doc['_id'] = str(doc['_id'])
+            
+            # Write to JSON file
+            with open(os.path.join(collections_dir, f"{collection_name}.json"), 'w') as f:
+                json.dump(documents, f, default=str)
+        
+        # Create metadata file with version info
+        with open(os.path.join(temp_dir, "metadata.json"), 'w') as f:
+            json.dump({
+                "version": "1.0.0",
+                "created_at": datetime.now().isoformat(),
+                "collections": collections
+            }, f)
+        
+        # Create zip file
+        zip_path = os.path.join(temp_dir, backup_filename)
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            # Add metadata file
+            zipf.write(os.path.join(temp_dir, "metadata.json"), arcname="metadata.json")
+            
+            # Add all collection files
+            for collection_name in collections:
+                zipf.write(
+                    os.path.join(collections_dir, f"{collection_name}.json"), 
+                    arcname=f"collections/{collection_name}.json"
+                )
+        
+        # Return the zip file
+        return FileResponse(
+            zip_path, 
+            filename=backup_filename,
+            media_type="application/zip",
+            background=BackgroundTasks().add_task(lambda: shutil.rmtree(temp_dir))
+        )
+        
+    except Exception as e:
+        logger.error(f"Backup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+
+@api_router.post("/restore", response_model=dict)
+async def restore_backup(backup_file: UploadFile = File(...)):
+    """Restore a backup of all data in the system."""
+    try:
+        # Create temp directory
+        temp_dir = tempfile.mkdtemp()
+        
+        # Write uploaded file to temp directory
+        file_path = os.path.join(temp_dir, backup_file.filename)
+        with open(file_path, "wb") as buffer:
+            buffer.write(await backup_file.read())
+        
+        # Extract zip
+        with zipfile.ZipFile(file_path, 'r') as zipf:
+            zipf.extractall(temp_dir)
+        
+        # Verify metadata
+        metadata_path = os.path.join(temp_dir, "metadata.json")
+        if not os.path.exists(metadata_path):
+            raise HTTPException(status_code=400, detail="Invalid backup file: metadata.json not found")
+        
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        if "version" not in metadata or "collections" not in metadata:
+            raise HTTPException(status_code=400, detail="Invalid backup metadata format")
+        
+        # Start restoration process
+        for collection_name in metadata["collections"]:
+            collection_path = os.path.join(temp_dir, "collections", f"{collection_name}.json")
+            
+            if not os.path.exists(collection_path):
+                logger.warning(f"Collection {collection_name} not found in backup, skipping")
+                continue
+            
+            # Read data
+            with open(collection_path, 'r') as f:
+                documents = json.load(f)
+            
+            if not documents:
+                logger.warning(f"No documents found for {collection_name}, skipping")
+                continue
+            
+            # Clear existing collection
+            await db[collection_name].delete_many({})
+            
+            # Insert documents
+            if documents:
+                await db[collection_name].insert_many(documents)
+        
+        # Clean up
+        shutil.rmtree(temp_dir)
+        
+        return {
+            "message": "Backup restored successfully",
+            "collections_restored": len(metadata["collections"]),
+            "backup_date": metadata.get("created_at", "Unknown")
+        }
+        
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid backup file format")
+    except Exception as e:
+        logger.error(f"Restore failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
+
+@api_router.get("/backup/status")
+async def backup_status():
+    """Get status information about the database for backup purposes."""
+    try:
+        status = {}
+        
+        # Get counts for each collection
+        collections = ['clients', 'vehicles', 'parts', 'quotes_orders', 'appointments']
+        for collection_name in collections:
+            status[collection_name] = await db[collection_name].count_documents({})
+        
+        return {
+            "status": "operational",
+            "collections": status,
+            "total_documents": sum(status.values()),
+            "server_time": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Status check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
