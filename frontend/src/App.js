@@ -978,7 +978,226 @@ const VehicleDetail = () => {
     </div>
   );
 };
-const QuoteList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Orçamentos</h1><p>Em construção...</p></div>;
+const QuoteList = () => {
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [clients, setClients] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch clients for reference
+        const clientsResponse = await axios.get(`${API}/clients`);
+        setClients(clientsResponse.data);
+        
+        // Build query for quotes
+        const queryParams = new URLSearchParams();
+        queryParams.append('service_type', 'quote');
+        if (statusFilter) queryParams.append('status', statusFilter);
+        
+        // Fetch quotes with filters
+        const quotesResponse = await axios.get(`${API}/services?${queryParams.toString()}`);
+        
+        // Sort quotes by date (newest first)
+        const sortedQuotes = quotesResponse.data.sort(
+          (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
+        
+        setQuotes(sortedQuotes);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching quotes:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [statusFilter]);
+
+  // Filter quotes by search term (client name, number)
+  const filteredQuotes = search
+    ? quotes.filter(quote => {
+        const client = clients.find(c => c.id === quote.client_id);
+        const clientName = client ? client.name.toLowerCase() : '';
+        return (
+          quote.number.toLowerCase().includes(search.toLowerCase()) ||
+          clientName.includes(search.toLowerCase())
+        );
+      })
+    : quotes;
+
+  // Format currency
+  const formatCurrency = (value) => {
+    return `R$ ${value.toFixed(2).replace('.', ',')}`;
+  };
+
+  // Get client name from client ID
+  const getClientName = (clientId) => {
+    const client = clients.find(c => c.id === clientId);
+    return client ? client.name : 'Cliente não encontrado';
+  };
+
+  // Get status label
+  const getStatusLabel = (status) => {
+    switch(status) {
+      case 'draft': return 'Rascunho';
+      case 'waiting_approval': return 'Aguardando Aprovação';
+      case 'approved': return 'Aprovado';
+      case 'in_progress': return 'Em Progresso';
+      case 'completed': return 'Concluído';
+      case 'delivered': return 'Entregue';
+      case 'cancelled': return 'Cancelado';
+      default: return status;
+    }
+  };
+
+  // Get status style
+  const getStatusStyle = (status) => {
+    switch(status) {
+      case 'draft': return 'bg-gray-100 text-gray-800';
+      case 'waiting_approval': return 'bg-yellow-100 text-yellow-800';
+      case 'approved': return 'bg-green-100 text-green-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-emerald-100 text-emerald-800';
+      case 'delivered': return 'bg-teal-100 text-teal-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Orçamentos</h1>
+        <Link 
+          to="/quotes/new" 
+          className="inline-flex items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+          </svg>
+          Novo Orçamento
+        </Link>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md mb-6">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative col-span-2">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"></path>
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5" 
+              placeholder="Buscar por número ou cliente..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <select
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">Todos os Status</option>
+              <option value="draft">Rascunho</option>
+              <option value="waiting_approval">Aguardando Aprovação</option>
+              <option value="approved">Aprovado</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          {filteredQuotes.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3">Número</th>
+                    <th className="px-6 py-3">Data</th>
+                    <th className="px-6 py-3">Cliente</th>
+                    <th className="px-6 py-3">Total</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredQuotes.map((quote) => (
+                    <tr key={quote.id} className="border-b hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">{quote.number}</td>
+                      <td className="px-6 py-4">{new Date(quote.date).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-6 py-4">{getClientName(quote.client_id)}</td>
+                      <td className="px-6 py-4 font-medium">{formatCurrency(quote.total)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(quote.status)}`}>
+                          {getStatusLabel(quote.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex space-x-2">
+                          <Link to={`/quotes/${quote.id}`} className="text-blue-600 hover:text-blue-900">
+                            Ver
+                          </Link>
+                          {quote.status === 'draft' && (
+                            <Link to={`/quotes/${quote.id}/edit`} className="text-green-600 hover:text-green-900">
+                              Editar
+                            </Link>
+                          )}
+                          {quote.status === 'approved' && (
+                            <button 
+                              className="text-indigo-600 hover:text-indigo-900"
+                              onClick={() => {
+                                if (window.confirm("Deseja converter este orçamento em uma ordem de serviço?")) {
+                                  // Convert to work order logic would go here
+                                  alert("Funcionalidade em implementação.");
+                                }
+                              }}
+                            >
+                              Converter p/ O.S.
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center p-10">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-gray-500">
+                Nenhum orçamento encontrado
+                {search ? " para a busca realizada" : ""}
+                {statusFilter ? ` com status "${getStatusLabel(statusFilter)}"` : ""}.
+              </p>
+              <Link to="/quotes/new" className="inline-block mt-3 text-blue-600 hover:text-blue-800">
+                Criar novo orçamento
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 const QuoteForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Orçamento</h1><p>Em construção...</p></div>;
 const QuoteDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Orçamento</h1><p>Em construção...</p></div>;
 const OrderList = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Ordens de Serviço</h1><p>Em construção...</p></div>;
