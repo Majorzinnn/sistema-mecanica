@@ -969,7 +969,374 @@ const VehicleList = () => {
     </div>
   );
 };
-const VehicleForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Veículo</h1><p>Em construção...</p></div>;
+const VehicleForm = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [clients, setClients] = useState([]);
+  
+  // Get the client ID from the query string if it exists
+  const searchParams = new URLSearchParams(location.search);
+  const clientIdFromQuery = searchParams.get('client');
+  
+  const [vehicle, setVehicle] = useState({
+    client_id: clientIdFromQuery || '',
+    license_plate: '',
+    make: '',
+    model: '',
+    year: new Date().getFullYear(),
+    color: '',
+    vin: '',
+    mileage: '',
+    fuel_type: '',
+    notes: ''
+  });
+  
+  const isEditing = !!id;
+
+  // Fetch available clients
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const response = await axios.get(`${API}/clients`);
+        setClients(response.data);
+      } catch (error) {
+        console.error("Error fetching clients:", error);
+        setError("Erro ao carregar lista de clientes.");
+      }
+    };
+    
+    fetchClients();
+  }, []);
+  
+  // Fetch vehicle data if editing
+  useEffect(() => {
+    if (isEditing) {
+      const fetchVehicle = async () => {
+        try {
+          setIsLoading(true);
+          const response = await axios.get(`${API}/vehicles/${id}`);
+          setVehicle(response.data);
+          setIsLoading(false);
+        } catch (error) {
+          console.error("Error fetching vehicle:", error);
+          setError("Erro ao carregar dados do veículo.");
+          setIsLoading(false);
+        }
+      };
+      
+      fetchVehicle();
+    }
+  }, [id, isEditing]);
+
+  // Handle input changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setVehicle(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!vehicle.client_id || !vehicle.license_plate || !vehicle.make || !vehicle.model || !vehicle.year) {
+      setError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      if (isEditing) {
+        await axios.put(`${API}/vehicles/${id}`, vehicle);
+      } else {
+        await axios.post(`${API}/vehicles`, vehicle);
+      }
+      
+      navigate('/vehicles');
+    } catch (error) {
+      console.error("Error saving vehicle:", error);
+      setError("Erro ao salvar veículo. Por favor, tente novamente.");
+      setIsLoading(false);
+    }
+  };
+
+  // Fuel type options
+  const fuelTypes = [
+    { value: "gasoline", label: "Gasolina" },
+    { value: "ethanol", label: "Etanol" },
+    { value: "flex", label: "Flex (Gasolina/Etanol)" },
+    { value: "diesel", label: "Diesel" },
+    { value: "biodiesel", label: "Biodiesel" },
+    { value: "cng", label: "GNV (Gás Natural)" },
+    { value: "electric", label: "Elétrico" },
+    { value: "hybrid", label: "Híbrido" },
+    { value: "other", label: "Outro" }
+  ];
+
+  if (isLoading && isEditing) {
+    return (
+      <div className="p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">
+          {isEditing ? 'Editar Veículo' : 'Novo Veículo'}
+        </h1>
+        <button
+          onClick={() => navigate('/vehicles')}
+          className="inline-flex items-center py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Voltar
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Client Selection */}
+            <div className="md:col-span-2">
+              <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Proprietário <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="client_id"
+                name="client_id"
+                value={vehicle.client_id}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                required
+                disabled={isEditing}
+              >
+                <option value="">Selecione um cliente</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.name} - {client.document}
+                  </option>
+                ))}
+              </select>
+              {isEditing && (
+                <p className="mt-1 text-xs text-gray-500">
+                  O proprietário não pode ser alterado após o cadastro do veículo.
+                </p>
+              )}
+              {!isEditing && clients.length === 0 && (
+                <p className="mt-1 text-sm text-red-600">
+                  Nenhum cliente cadastrado.{' '}
+                  <Link to="/clients/new" className="text-blue-600 hover:text-blue-800">
+                    Cadastrar cliente
+                  </Link>
+                </p>
+              )}
+            </div>
+
+            {/* License Plate */}
+            <div>
+              <label htmlFor="license_plate" className="block text-sm font-medium text-gray-700 mb-1">
+                Placa <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="license_plate"
+                name="license_plate"
+                value={vehicle.license_plate}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="ABC1234 ou ABC-1234"
+                required
+              />
+            </div>
+
+            {/* VIN / Chassis */}
+            <div>
+              <label htmlFor="vin" className="block text-sm font-medium text-gray-700 mb-1">
+                Chassi (VIN)
+              </label>
+              <input
+                type="text"
+                id="vin"
+                name="vin"
+                value={vehicle.vin || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Número de chassi/VIN"
+              />
+            </div>
+
+            {/* Make */}
+            <div>
+              <label htmlFor="make" className="block text-sm font-medium text-gray-700 mb-1">
+                Marca <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="make"
+                name="make"
+                value={vehicle.make}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Toyota, Honda, Volkswagen"
+                required
+              />
+            </div>
+
+            {/* Model */}
+            <div>
+              <label htmlFor="model" className="block text-sm font-medium text-gray-700 mb-1">
+                Modelo <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="model"
+                name="model"
+                value={vehicle.model}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Corolla, Civic, Golf"
+                required
+              />
+            </div>
+
+            {/* Year */}
+            <div>
+              <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-1">
+                Ano <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                id="year"
+                name="year"
+                min="1900"
+                max={new Date().getFullYear() + 1}
+                value={vehicle.year}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                required
+              />
+            </div>
+
+            {/* Color */}
+            <div>
+              <label htmlFor="color" className="block text-sm font-medium text-gray-700 mb-1">
+                Cor
+              </label>
+              <input
+                type="text"
+                id="color"
+                name="color"
+                value={vehicle.color || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: Prata, Branco, Preto"
+              />
+            </div>
+
+            {/* Mileage */}
+            <div>
+              <label htmlFor="mileage" className="block text-sm font-medium text-gray-700 mb-1">
+                Quilometragem (km)
+              </label>
+              <input
+                type="number"
+                min="0"
+                id="mileage"
+                name="mileage"
+                value={vehicle.mileage || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Ex: 45000"
+              />
+            </div>
+
+            {/* Fuel Type */}
+            <div>
+              <label htmlFor="fuel_type" className="block text-sm font-medium text-gray-700 mb-1">
+                Tipo de Combustível
+              </label>
+              <select
+                id="fuel_type"
+                name="fuel_type"
+                value={vehicle.fuel_type || ''}
+                onChange={handleChange}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              >
+                <option value="">Selecione o combustível</option>
+                {fuelTypes.map(fuel => (
+                  <option key={fuel.value} value={fuel.value}>
+                    {fuel.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Notes */}
+            <div className="md:col-span-2">
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+                Observações
+              </label>
+              <textarea
+                id="notes"
+                name="notes"
+                value={vehicle.notes || ''}
+                onChange={handleChange}
+                rows="3"
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Informações adicionais sobre o veículo"
+              ></textarea>
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end">
+            <button
+              type="button"
+              onClick={() => navigate('/vehicles')}
+              className="mr-2 py-2 px-4 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="py-2 px-6 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Salvando...
+                </>
+              ) : (
+                'Salvar Veículo'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 const VehicleDetail = () => {
   const { id } = useParams();
   const [vehicle, setVehicle] = useState(null);
