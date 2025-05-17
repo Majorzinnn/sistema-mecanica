@@ -913,3 +913,8 @@ async def backup_status():
     except Exception as e:
         logger.error(f"Status check failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
+    logger.info("Shutting down the application...")
