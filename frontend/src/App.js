@@ -989,7 +989,312 @@ const InventoryForm = () => <div className="p-6"><h1 className="text-3xl font-bo
 const InventoryDetail = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Detalhes do Item</h1><p>Em construção...</p></div>;
 const ScheduleView = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Agenda</h1><p>Em construção...</p></div>;
 const ScheduleForm = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Novo Agendamento</h1><p>Em construção...</p></div>;
-const Reports = () => <div className="p-6"><h1 className="text-3xl font-bold text-gray-800 mb-6">Relatórios</h1><p>Em construção...</p></div>;
+const Reports = () => {
+  const [loading, setLoading] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
+  const fileInputRef = React.useRef(null);
+
+  useEffect(() => {
+    fetchBackupStatus();
+  }, []);
+
+  const fetchBackupStatus = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API}/backup/status`);
+      setBackupStatus(response.data);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching backup status:", error);
+      setMessage({
+        type: "error",
+        text: "Erro ao carregar status do backup"
+      });
+      setLoading(false);
+    }
+  };
+
+  const handleBackup = async () => {
+    try {
+      setLoading(true);
+      setMessage(null);
+      
+      // Using axios with responseType blob to handle file download
+      const response = await axios.post(
+        `${API}/backup`,
+        {},
+        { responseType: 'blob' } 
+      );
+      
+      // Create file download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      
+      // Get filename from content-disposition header if available
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'europa_backup.zip';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch && filenameMatch.length === 2) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      setMessage({
+        type: "success",
+        text: "Backup criado com sucesso e o download foi iniciado"
+      });
+      
+      // Refresh backup status
+      fetchBackupStatus();
+      
+    } catch (error) {
+      console.error("Error creating backup:", error);
+      setMessage({
+        type: "error",
+        text: "Erro ao criar backup"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    setUploadFile(e.target.files[0]);
+  };
+
+  const handleRestore = async () => {
+    if (!uploadFile) {
+      setMessage({
+        type: "error",
+        text: "Por favor, selecione um arquivo de backup para restaurar"
+      });
+      return;
+    }
+    
+    // Ask for confirmation
+    if (!window.confirm("ATENÇÃO: Restaurar um backup substituirá TODOS os dados atuais do sistema. Esta ação não pode ser desfeita. Deseja continuar?")) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setMessage(null);
+      
+      const formData = new FormData();
+      formData.append('backup_file', uploadFile);
+      
+      const response = await axios.post(`${API}/restore`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      setMessage({
+        type: "success",
+        text: `Backup restaurado com sucesso! ${response.data.collections_restored} coleções foram restauradas.`
+      });
+      
+      // Reset file input
+      setUploadFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      // Refresh backup status
+      fetchBackupStatus();
+      
+    } catch (error) {
+      console.error("Error restoring backup:", error);
+      setMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Erro ao restaurar backup"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">Backup e Restauração</h1>
+      
+      {message && (
+        <div className={`mb-6 p-4 rounded ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          {message.text}
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Backup Card */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Fazer Backup</h2>
+          <p className="text-gray-600 mb-4">
+            Crie um backup completo de todos os dados do sistema. O arquivo gerado pode ser utilizado para restaurar o sistema em caso de problemas.
+          </p>
+          
+          {backupStatus && (
+            <div className="mb-4 p-4 bg-blue-50 rounded">
+              <h3 className="font-semibold text-blue-800 mb-2">Status Atual</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>Clientes:</div>
+                <div>{backupStatus.collections?.clients || 0}</div>
+                
+                <div>Veículos:</div>
+                <div>{backupStatus.collections?.vehicles || 0}</div>
+                
+                <div>Peças:</div>
+                <div>{backupStatus.collections?.parts || 0}</div>
+                
+                <div>Serviços:</div>
+                <div>{backupStatus.collections?.quotes_orders || 0}</div>
+                
+                <div>Agendamentos:</div>
+                <div>{backupStatus.collections?.appointments || 0}</div>
+                
+                <div className="font-semibold">Total de Documentos:</div>
+                <div className="font-semibold">{backupStatus.total_documents || 0}</div>
+              </div>
+            </div>
+          )}
+          
+          <button
+            onClick={handleBackup}
+            disabled={loading}
+            className="w-full flex justify-center items-center py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-blue-300"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processando...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                Fazer Backup Agora
+              </>
+            )}
+          </button>
+        </div>
+        
+        {/* Restore Card */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Restaurar Backup</h2>
+          <p className="text-gray-600 mb-4">
+            Restaure um backup previamente criado. <span className="font-semibold text-red-600">Atenção:</span> Esta ação substituirá todos os dados atuais do sistema.
+          </p>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Arquivo de Backup
+            </label>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".zip"
+              className="w-full border border-gray-300 rounded-md p-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Selecione um arquivo .zip de backup criado por este sistema
+            </p>
+          </div>
+          
+          <button
+            onClick={handleRestore}
+            disabled={loading || !uploadFile}
+            className="w-full flex justify-center items-center py-2 px-4 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors disabled:bg-amber-300"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processando...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+                Restaurar Backup
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Boas Práticas de Backup</h2>
+        
+        <div className="space-y-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-gray-800">Fazer backups regularmente</h3>
+              <p className="mt-1 text-gray-600">Recomendamos fazer backups pelo menos uma vez por semana, ou após inserir uma quantidade significativa de dados.</p>
+            </div>
+          </div>
+          
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-gray-800">Manter cópias em locais diferentes</h3>
+              <p className="mt-1 text-gray-600">Armazene os arquivos de backup em múltiplos dispositivos e locais (pen drive, HD externo, outra pasta no computador).</p>
+            </div>
+          </div>
+          
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-gray-800">Fazer backup antes de grandes operações</h3>
+              <p className="mt-1 text-gray-600">Sempre crie um backup antes de realizar operações em massa ou atualizações importantes no sistema.</p>
+            </div>
+          </div>
+          
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-gray-800">Tenha cuidado ao restaurar</h3>
+              <p className="mt-1 text-gray-600">A restauração substituirá todos os dados atuais. Certifique-se de estar usando o arquivo de backup correto.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Main layout
 const Layout = ({ children }) => {
